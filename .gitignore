@@ -1,0 +1,26 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment variables
+.env
+
+# Output data (don't commit scraped data to git)
+data/
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
