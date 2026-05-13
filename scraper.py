@@ -178,40 +178,41 @@ def try_extract_from_json(soup, html_text):
 
 
 def extract_overall_rating(soup, json_data):
-    """Get the overall company rating."""
+    """Extract overall company rating."""
 
-    # try JSON-LD first (most reliable)
+    # try JSON-LD first
     if "json_ld" in json_data:
         ld = json_data["json_ld"]
+
         if isinstance(ld, dict) and "aggregateRating" in ld:
             val = ld["aggregateRating"].get("ratingValue")
+
             if val:
                 return str(val)
 
-    # try the rating_text class (works on both listing cards and detail pages)
-    rating_el = soup.find("div", class_="rating_text")
-    if rating_el:
-        val = extract_rating_value(safe_text(rating_el))
-        if val != "N/A":
-            return val
+    # search page text
+    page_text = soup.get_text(" ", strip=True)
 
-    # try the star rating container
-    rating_container = soup.find("div", class_=re.compile(r"companyRating|overallRating"))
-    if rating_container:
-        val = extract_rating_value(safe_text(rating_container))
-        if val != "N/A":
-            return val
+    # pattern:
+    # 3.7 based on 73.5k Reviews
+    match = re.search(
+        r"(\d\.\d)\s*based on",
+        page_text,
+        re.I
+    )
 
-    # look for "Overall Rating" heading and nearby number
-    overall_heading = soup.find(string=re.compile(r"Overall\s*Rating", re.I))
-    if overall_heading:
-        parent = overall_heading.find_parent()
-        if parent:
-            container = parent.find_parent()
-            if container:
-                val = extract_rating_value(container.get_text())
-                if val != "N/A":
-                    return val
+    if match:
+        return match.group(1)
+
+    # fallback:
+    # 3.4 /5
+    match = re.search(
+        r"(\d\.\d)\s*/\s*5",
+        page_text
+    )
+
+    if match:
+        return match.group(1)
 
     return "N/A"
 
@@ -262,47 +263,48 @@ def extract_industry(soup, json_data):
 
 
 def extract_description(soup, json_data):
-    """Get the company description."""
+    """Extract company description/summary."""
 
-    # try JSON-LD
-    if "json_ld" in json_data:
-        ld = json_data["json_ld"]
-        if isinstance(ld, dict):
-            desc = ld.get("description")
-            if desc and len(desc) > 30:
-                return clean_text(desc)
+    # Find company summary/about section
+    headings = soup.find_all(
+        string=re.compile(r"Company Summary|About", re.I)
+    )
 
-    # try OG description meta tag (usually has a good summary)
-    og_desc = soup.find("meta", attrs={"property": "og:description"})
-    if og_desc:
-        content = og_desc.get("content", "")
-        if content and len(content) > 30:
-            return clean_text(content)
+    for heading in headings:
 
-    # try regular meta description
-    meta_desc = soup.find("meta", attrs={"name": "description"})
-    if meta_desc:
-        content = meta_desc.get("content", "")
-        if content and len(content) > 30:
-            return clean_text(content)
+        parent = heading.find_parent()
 
-    # look for text near "About" heading
-    about_patterns = [
-        re.compile(r"^About\s+\w+", re.I),
-        re.compile(r"About$", re.I),
-    ]
-    for pattern in about_patterns:
-        about_heading = soup.find(string=pattern)
-        if about_heading:
-            parent = about_heading.find_parent()
-            if parent:
-                # check next siblings for paragraphs
-                next_el = parent.find_next_sibling()
-                while next_el:
-                    text = safe_text(next_el)
-                    if len(text) > 50:
-                        return clean_text(text[:500])
-                    next_el = next_el.find_next_sibling()
+        if not parent:
+            continue
+
+        # Look through next elements
+        next_elements = parent.find_all_next()
+
+        for el in next_elements:
+
+            text = safe_text(el)
+
+            if not text or text == "N/A":
+                continue
+
+            # Skip short slogan/banner text
+            if len(text) < 80:
+                continue
+
+            # Skip overly uppercase marketing lines
+            if text.count(" ") < 8:
+                continue
+
+            # Prefer paragraph-like descriptions
+            if "." in text or "," in text:
+
+                cleaned = clean_text(text)
+
+                # avoid duplicate SEO phrases
+                if "Get an inside look of" in cleaned:
+                    continue
+
+                return cleaned[:500]
 
     return "N/A"
 
@@ -323,7 +325,6 @@ RATING_CATEGORIES = {
     "skill development": "rating_skill_development",
     "company culture": "rating_company_culture",
     "culture": "rating_company_culture",
-    "management": "rating_management",
 }
 
 
@@ -338,7 +339,7 @@ def extract_key_ratings(soup, json_data):
         "rating_promotions": "N/A",
         "rating_skill_development": "N/A",
         "rating_company_culture": "N/A",
-        "rating_management": "N/A",
+        
     }
 
     # Strategy 1: look for the __NUXT__ data which sometimes has category ratings
@@ -410,7 +411,6 @@ def build_empty_result(name, url):
         "rating_promotions": "N/A",
         "rating_skill_development": "N/A",
         "rating_company_culture": "N/A",
-        "rating_management": "N/A",
         "scraped_at": get_timestamp(),
     }
 

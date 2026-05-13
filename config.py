@@ -44,6 +44,5 @@ CSV_COLUMNS = [
     "rating_promotions",
     "rating_skill_development",
     "rating_company_culture",
-    "rating_management",
     "scraped_at",
 ]
